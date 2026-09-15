@@ -52,35 +52,15 @@ plus `gemini-3.1-pro-*` and other IDs. You can also point
 The `[1m]` context-window suffix is stripped before forwarding; thinking
 level is derived from the model name suffix (`-high`/`-low`, else medium).
 
-## Latency
-
-`gemini-3.8-flash-*` takes 14-30s to first token on this account. That is
-upstream, not the proxy: the real `agy --model gemini-3.8-flash-high -p "hi"`
-takes 19s too. Every other catalog family answers in under 2s
-(`gemini-3.7-flash-*`, `gemini-3.6-flash-*`, `gemini-3.1-pro-*`).
-Export `AGY_MODEL=gemini-3.7-flash-high` for an interactive-feeling session
-(that covers the main and Sonnet slots; the Haiku/Opus/subagent slots are
-pinned to 3.8 in `claude-agy` and have their own `AGY_SUBAGENT_MODEL` knob).
-
-3.8 also returns intermittent `503 No capacity available for model
-gemini-3.8-flash-high` under load -- observed several times on 2026-09-15.
-
-Two things keep Claude Code from giving up during that wait:
+## Translation notes
 
 - The proxy emits an SSE `ping` every 5s until the first upstream chunk, so
   the stream never goes byte-silent (Claude Code drops silent streams --
   that is the "Streaming response ended before any complete data was
   received" error).
-- `claude-agy` raises `API_TIMEOUT_MS` and
-  `CLAUDE_BYTE_STREAM_IDLE_TIMEOUT_MS` for the non-streaming title/utility
-  calls that cannot be kept alive. Both names come from the Claude Code
-  binary; the ping fix is the one confirmed by testing.
-
-`gemini-3-flash-agent` and `gemini-3.5-flash-*` appear in `GET /v1/models`
-but are decommissioned: they answer any prompt in 0.1s with "Gemini 3.5 Flash
-is no longer available." Do not route to them.
-
-## Translation notes
+- `gemini-3-flash-agent` and `gemini-3.5-flash-*` appear in `GET /v1/models`
+  but are decommissioned: they answer any prompt in 0.1s with "Gemini 3.5
+  Flash is no longer available." Do not route to them.
 
 - Anthropic `system` becomes the upstream `systemInstruction`; `assistant`
   becomes the `model` role, and mid-conversation `system` messages are folded
