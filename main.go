@@ -53,7 +53,7 @@ func main() {
 	srv := &proxyServer{
 		agy:          agy,
 		catalog:      cats,
-		sigs:         newSignatureStore(),
+		sigs:         newSignatureStore(*stateDir),
 		defaultModel: *defaultModel,
 		authToken:    *proxyToken,
 		logger:       l,

@@ -3,8 +3,11 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 )
 
 // Anthropic Messages API request shapes (only the fields we consume).
@@ -73,22 +76,69 @@ func blocksOf(msg anthMessage) []anthBlock {
 	return blocks
 }
 
+const signatureLimit = 8192
+
 // signatureStore remembers the Gemini thoughtSignature that accompanied each
 // functionCall so replaying conversation history keeps tool exchanges valid.
+// It is backed by an append-only log in the state directory: upstream rejects
+// history whose functionCalls lost their signatures, so a restart would
+// otherwise degrade every Claude Code session already in flight.
 type signatureStore struct {
+	mu          sync.Mutex
 	byToolUseID map[string]string
 	order       []string
+	log         *os.File
 }
 
-func newSignatureStore() *signatureStore {
-	return &signatureStore{byToolUseID: map[string]string{}}
+type signatureRecord struct {
+	ID  string `json:"id"`
+	Sig string `json:"sig"`
 }
 
-func (s *signatureStore) put(id, sig string) {
-	if id == "" || sig == "" {
+func newSignatureStore(stateDir string) *signatureStore {
+	s := &signatureStore{byToolUseID: map[string]string{}}
+	if stateDir != "" {
+		s.openLog(filepath.Join(stateDir, "signatures.jsonl"))
+	}
+	return s
+}
+
+// openLog replays the previous run's signatures, then rewrites the log with
+// only the entries still held so it cannot grow without bound.
+func (s *signatureStore) openLog(path string) {
+	if data, err := os.ReadFile(path); err == nil {
+		for _, line := range strings.Split(string(data), "\n") {
+			var rec signatureRecord
+			if line == "" || json.Unmarshal([]byte(line), &rec) != nil {
+				continue
+			}
+			s.remember(rec.ID, rec.Sig)
+		}
+	}
+	if os.MkdirAll(filepath.Dir(path), 0o700) != nil {
 		return
 	}
-	if _, seen := s.byToolUseID[id]; !seen && len(s.order) >= 8192 {
+	compacted := path + ".tmp"
+	f, err := os.OpenFile(compacted, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+	if err != nil {
+		return
+	}
+	enc := json.NewEncoder(f)
+	for _, id := range s.order {
+		if enc.Encode(signatureRecord{ID: id, Sig: s.byToolUseID[id]}) != nil {
+			f.Close()
+			return
+		}
+	}
+	if os.Rename(compacted, path) != nil {
+		f.Close()
+		return
+	}
+	s.log = f
+}
+
+func (s *signatureStore) remember(id, sig string) {
+	if _, seen := s.byToolUseID[id]; !seen && len(s.order) >= signatureLimit {
 		delete(s.byToolUseID, s.order[0])
 		s.order = s.order[1:]
 	}
@@ -96,7 +146,26 @@ func (s *signatureStore) put(id, sig string) {
 	s.order = append(s.order, id)
 }
 
-func (s *signatureStore) get(id string) string { return s.byToolUseID[id] }
+func (s *signatureStore) put(id, sig string) {
+	if id == "" || sig == "" {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.remember(id, sig)
+	if s.log == nil {
+		return
+	}
+	if record, err := json.Marshal(signatureRecord{ID: id, Sig: sig}); err == nil {
+		_, _ = s.log.Write(append(record, '\n'))
+	}
+}
+
+func (s *signatureStore) get(id string) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.byToolUseID[id]
+}
 
 // Claude Code >= 2.1.273 prepends "x-anthropic-billing-header: cc_version=...;
 // cc_entrypoint=...;" to the system prompt. Upstream 429s on it; every other

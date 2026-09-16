@@ -149,10 +149,13 @@ are pinned to 3.8 here and `AGY_SUBAGENT_MODEL` covers the subagent slot.
   asked to continue from its own call -- upstream rejects the whole request
   (400 "Function call is missing a thought_signature") unless *every*
   `functionCall` in the history carries one, and a fabricated signature is
-  refused as corrupted. The store is in-memory, so restarting the proxy
-  mid-session loses those signatures; such exchanges are replayed as plain
-  text (`[called tool X with {...}]`), which upstream accepts. Signatures
-  are portable across models, so switching model mid-session is safe.
+  refused as corrupted. The store is persisted to
+  `~/.config/agy-proxy/signatures.jsonl` (0600, append-only, compacted at
+  startup, last 8192 calls) so restarting the proxy does not break sessions
+  already in flight. An exchange whose signature is genuinely unknown -- from
+  before the log existed, or evicted -- is replayed as plain text
+  (`[called tool X with {...}]`), which upstream accepts. Signatures are
+  portable across models, so switching model mid-session is safe.
 - The upstream server soft-blocks (429) requests whose `systemInstruction`
   identifies them as Claude Code traffic: the "You are a Claude agent, built
   on Anthropic's Claude Agent SDK." identity sentence, and the
@@ -171,6 +174,9 @@ are pinned to 3.8 here and `AGY_SUBAGENT_MODEL` covers the subagent slot.
 - Credentials live in `~/.config/agy-proxy/creds.json` (0600); the process
   reads the keychain entry once via `/usr/bin/security` (macOS may prompt for
   keychain access).
+- `~/.config/agy-proxy/signatures.jsonl` (0600) holds upstream reasoning
+  signatures for past tool calls -- opaque model state, not credentials, but
+  delete it if you want no trace of a session.
 - The proxy binds to loopback by default; set `-token` if you expose it
   elsewhere. Logs never contain tokens.
 - Using a personal subscription through an unofficial client is outside
