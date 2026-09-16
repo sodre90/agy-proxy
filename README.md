@@ -166,6 +166,10 @@ silent in sessions that do not use it.
   the same model (same catalog display name, "Gemini 3.1 Pro (High)"), so
   the proxy substitutes it. `gemini-3.1-pro-low` works as listed.
 
+- Gemini writes mathematics as LaTeX by default, which a terminal prints
+  literally (`$$x = \\frac{-b \\pm ...}$$`). The proxy appends a line to the
+  system prompt asking for Unicode math instead; `AGY_PROXY_KEEP_LATEX=1`
+  turns that off for a client that renders TeX.
 - Anthropic `system` becomes the upstream `systemInstruction`; `assistant`
   becomes the `model` role, and mid-conversation `system` messages are folded
   into adjacent user turns (Gemini rejects a `system` role in `contents`).

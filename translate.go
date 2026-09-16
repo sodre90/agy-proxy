@@ -182,7 +182,22 @@ func sanitizeSystem(s string) string {
 	s = strings.ReplaceAll(s, "Claude Code", "Antigravity CLI")
 	s = strings.ReplaceAll(s, "Claude agent", "autonomous coding agent")
 	s = strings.ReplaceAll(s, "Claude", "the assistant")
-	return s
+	return s + plainTextMathNote
+}
+
+// Gemini writes mathematics as LaTeX by default, which a terminal prints
+// literally as "$$x = \frac{-b \pm ...}$$". Set AGY_PROXY_KEEP_LATEX=1 to turn
+// this off (for a client that renders TeX).
+var plainTextMathNote = mathNoteUnlessDisabled()
+
+func mathNoteUnlessDisabled() string {
+	if os.Getenv("AGY_PROXY_KEEP_LATEX") != "" {
+		return ""
+	}
+	return "\n\nYour output is displayed in a plain-text terminal that cannot " +
+		"render LaTeX. Write mathematics as Unicode text — x² + y², √2, π, ≈, " +
+		"∫₀¹, (a + b)/2, ℝ — and never use $…$, $$…$$, \\(…\\), \\[…\\], " +
+		"\\frac, \\sqrt, \\pm or other TeX markup."
 }
 
 // buildGenerateRequest converts an Anthropic request into the v1internal
