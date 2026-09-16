@@ -17,6 +17,7 @@ import (
 type proxyServer struct {
 	agy          *agyClient
 	catalog      *catalog
+	quota        *quotaCache
 	sigs         *signatureStore
 	defaultModel string
 	authToken    string
@@ -31,6 +32,7 @@ func (s *proxyServer) handler() http.Handler {
 	mux.HandleFunc("POST /v1/messages", s.handleMessages)
 	mux.HandleFunc("POST /v1/messages/count_tokens", s.handleCountTokens)
 	mux.HandleFunc("GET /v1/models", s.handleModels)
+	mux.HandleFunc("GET /usage", s.handleUsage)
 	mux.HandleFunc("HEAD /api/hello", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
 	mux.HandleFunc("GET /api/hello", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"success": true})
@@ -287,6 +289,21 @@ func assembleMessage(model string, state *streamState, events []streamEvent) map
 		"stop_sequence": nil,
 		"usage":         state.usage,
 	}
+}
+
+// handleUsage reports the Google subscription's remaining quota, for status
+// lines and the like. Values come straight from the upstream summary.
+func (s *proxyServer) handleUsage(w http.ResponseWriter, r *http.Request) {
+	buckets, fetched, err := s.quota.Buckets(r.Context())
+	if err != nil {
+		status, code := httpStatusForError(err)
+		writeAnthropicError(w, status, code, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"fetchedAt": fetched.UTC().Format(time.RFC3339),
+		"buckets":   buckets,
+	})
 }
 
 func (s *proxyServer) handleCountTokens(w http.ResponseWriter, r *http.Request) {

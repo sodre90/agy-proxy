@@ -288,3 +288,85 @@ func (cat *catalog) Models(ctx context.Context) (map[string]modelCatalogEntry, e
 	cat.loaded = time.Now()
 	return cat.entries, nil
 }
+
+// quotaBucket is one subscription limit window as the upstream reports it.
+type quotaBucket struct {
+	ID                string  `json:"id"`
+	Group             string  `json:"group,omitempty"`
+	DisplayName       string  `json:"displayName,omitempty"`
+	Window            string  `json:"window,omitempty"`
+	RemainingFraction float64 `json:"remainingFraction"`
+	ResetTime         string  `json:"resetTime,omitempty"`
+	Description       string  `json:"description,omitempty"`
+}
+
+// quotaCache serves the subscription quota, refreshed at most once a minute:
+// a status line asks for it on every render.
+type quotaCache struct {
+	mu      sync.Mutex
+	client  *agyClient
+	buckets []quotaBucket
+	fetched time.Time
+}
+
+const quotaTTL = time.Minute
+
+func newQuotaCache(c *agyClient) *quotaCache { return &quotaCache{client: c} }
+
+func (q *quotaCache) Buckets(ctx context.Context) ([]quotaBucket, time.Time, error) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if q.buckets != nil && time.Since(q.fetched) < quotaTTL {
+		return q.buckets, q.fetched, nil
+	}
+	token, err := q.client.tokens.Token()
+	if err != nil {
+		return nil, time.Time{}, err
+	}
+	req, _ := http.NewRequestWithContext(ctx, http.MethodPost,
+		q.client.baseURL+"/v1internal:retrieveUserQuotaSummary", strings.NewReader("{}"))
+	req.Header.Set("authorization", "Bearer "+token)
+	req.Header.Set("content-type", "application/json")
+	req.Header.Set("user-agent", cliUserAgent)
+	resp, err := q.client.httpClient.Do(req)
+	if err != nil {
+		return nil, time.Time{}, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		msg, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<10))
+		return nil, time.Time{}, &apiError{status: resp.StatusCode, message: extractErrorMessage(string(msg))}
+	}
+	var payload struct {
+		Groups []struct {
+			DisplayName string `json:"displayName"`
+			Buckets     []struct {
+				BucketID          string  `json:"bucketId"`
+				DisplayName       string  `json:"displayName"`
+				Window            string  `json:"window"`
+				ResetTime         string  `json:"resetTime"`
+				Description       string  `json:"description"`
+				RemainingFraction float64 `json:"remainingFraction"`
+			} `json:"buckets"`
+		} `json:"groups"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return nil, time.Time{}, err
+	}
+	buckets := make([]quotaBucket, 0, 4)
+	for _, g := range payload.Groups {
+		for _, b := range g.Buckets {
+			buckets = append(buckets, quotaBucket{
+				ID:                b.BucketID,
+				Group:             g.DisplayName,
+				DisplayName:       b.DisplayName,
+				Window:            b.Window,
+				RemainingFraction: b.RemainingFraction,
+				ResetTime:         b.ResetTime,
+				Description:       b.Description,
+			})
+		}
+	}
+	q.buckets, q.fetched = buckets, time.Now()
+	return q.buckets, q.fetched, nil
+}

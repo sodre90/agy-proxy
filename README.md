@@ -123,6 +123,35 @@ claude-agy() {
 `AGY_MODEL` overrides the main and Sonnet slots; the Haiku/Opus/Fable slots
 are pinned to 3.8 here and `AGY_SUBAGENT_MODEL` covers the subagent slot.
 
+## Quota
+
+`GET /usage` relays Google's own subscription quota (from
+`v1internal:retrieveUserQuotaSummary`), cached for a minute so a status line
+can poll it on every render:
+
+```json
+{
+  "fetchedAt": "2026-09-16T12:54:12Z",
+  "buckets": [
+    {"id": "gemini-5h", "group": "Gemini Models", "window": "5h",
+     "remainingFraction": 0.3958595, "resetTime": "2026-09-16T16:20:50Z",
+     "description": "You have used some of your 5-hour limit, ..."}
+  ]
+}
+```
+
+`remainingFraction` is what is **left**, not what is used. Bucket ids seen so
+far: `gemini-5h` and `gemini-weekly` (Gemini Flash and Pro), plus `3p-5h` and
+`3p-weekly` (the Claude/GPT-OSS models the same subscription covers).
+
+A Claude Code status line can read it with:
+
+    curl -s --max-time 4 "${ANTHROPIC_BASE_URL%/}/usage" |
+      jq -r '.buckets[] | select(.id == "gemini-5h") | .remainingFraction * 100 | floor'
+
+Gate that segment on `ANTHROPIC_BASE_URL` pointing at the proxy so it stays
+silent in sessions that do not use it.
+
 ## Translation notes
 
 - The proxy emits an SSE `ping` every 5s until the first upstream chunk, so
