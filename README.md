@@ -115,6 +115,7 @@ claude-agy() {
     CLAUDE_CODE_SUBAGENT_MODEL="${AGY_SUBAGENT_MODEL:-gemini-3.8-flash-medium}"
     API_TIMEOUT_MS="${AGY_API_TIMEOUT_MS:-600000}"
     CLAUDE_BYTE_STREAM_IDLE_TIMEOUT_MS="${AGY_STREAM_IDLE_TIMEOUT_MS:-300000}"
+    CLAUDE_CODE_MAX_CONTEXT_TOKENS="${AGY_MAX_CONTEXT_TOKENS:-1048576}"
   )
   env "${claude_env[@]}" claude "$@"
 }
@@ -122,6 +123,13 @@ claude-agy() {
 
 `AGY_MODEL` overrides the main and Sonnet slots; the Haiku/Opus/Fable slots
 are pinned to 3.8 here and `AGY_SUBAGENT_MODEL` covers the subagent slot.
+
+`CLAUDE_CODE_MAX_CONTEXT_TOKENS` matters: Claude Code does not recognize these
+model ids, so it assumes its 200k default even though the catalog reports
+`maxTokens` 1048576 for every flash and pro tier. Without it you lose 80% of
+the context window (and hit auto-compact five times sooner). Claude Code's
+`maxOutputTokens` stays at its own 32000 default -- `CLAUDE_CODE_MAX_OUTPUT_TOKENS`
+had no effect in 2.1.273 -- against an upstream limit of 65536.
 
 ## Quota
 
