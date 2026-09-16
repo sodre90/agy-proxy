@@ -36,6 +36,20 @@ Flags (env fallbacks in parentheses):
 `AGY_PROXY_DUMP=/path/to/file` additionally dumps the last translated upstream
 request (conversation content included; for debugging only).
 
+## Install from a release
+
+Prebuilt binaries for macOS (Apple Silicon and Intel) and Linux (x86-64 and
+ARM) are in [Releases](https://github.com/sodre90/agy-proxy/releases). Each
+archive contains `agy-proxy` plus this README:
+
+    tar xzf agy-proxy-v0.1.0-darwin-arm64.tar.gz
+    ./agy-proxy-v0.1.0-darwin-arm64/agy-proxy -check
+
+On Linux there is no macOS keychain to copy the refresh token from, so place
+a `~/.config/agy-proxy/creds.json` yourself before the first start (copy it
+from a Mac where `agy` is logged in, or write the `refresh_token` field by
+hand).
+
 ## Use from Claude Code
 
     ANTHROPIC_BASE_URL=http://127.0.0.1:8788 \
@@ -51,6 +65,55 @@ plus `gemini-3.1-pro-*` and other IDs. You can also point
 
 The `[1m]` context-window suffix is stripped before forwarding; thinking
 level is derived from the model name suffix (`-high`/`-low`, else medium).
+
+### The `claude-agy` shell command
+
+For `~/.bash_profile` (works in zsh too): starts the proxy on demand, waits
+for it, and runs `claude` against it. Point `bin` at your binary.
+
+```bash
+claude-agy() {
+  local base="http://127.0.0.1:8788"
+  local bin="$HOME/bin/agy-proxy"
+
+  if ! curl -fsS -m 2 -o /dev/null "$base/health" 2>/dev/null; then
+    if [[ ! -x "$bin" ]]; then
+      echo "claude-agy: proxy binary missing at $bin" >&2
+      return 1
+    fi
+    mkdir -p ~/.config/agy-proxy
+    nohup "$bin" >> ~/.config/agy-proxy/proxy.log 2>&1 &
+    disown
+    for _ in {1..40}; do
+      curl -fsS -m 2 -o /dev/null "$base/health" 2>/dev/null && break
+      sleep 0.25
+    done
+  fi
+  if ! curl -fsS -m 2 -o /dev/null "$base/health" 2>/dev/null; then
+    echo "claude-agy: agy-proxy did not come up on $base (see ~/.config/agy-proxy/proxy.log)" >&2
+    return 1
+  fi
+
+  local model="${AGY_MODEL:-gemini-3.8-flash-high}"
+  local -a claude_env=(
+    -u ANTHROPIC_API_KEY
+    ANTHROPIC_BASE_URL="$base"
+    ANTHROPIC_AUTH_TOKEN="agy-proxy-local"
+    ANTHROPIC_MODEL="$model"
+    ANTHROPIC_DEFAULT_HAIKU_MODEL="gemini-3.8-flash-low"
+    ANTHROPIC_DEFAULT_SONNET_MODEL="$model"
+    ANTHROPIC_DEFAULT_OPUS_MODEL="gemini-3.8-flash-high"
+    ANTHROPIC_DEFAULT_FABLE_MODEL="gemini-3.8-flash-high"
+    CLAUDE_CODE_SUBAGENT_MODEL="${AGY_SUBAGENT_MODEL:-gemini-3.8-flash-medium}"
+    API_TIMEOUT_MS="${AGY_API_TIMEOUT_MS:-600000}"
+    CLAUDE_BYTE_STREAM_IDLE_TIMEOUT_MS="${AGY_STREAM_IDLE_TIMEOUT_MS:-300000}"
+  )
+  env "${claude_env[@]}" claude "$@"
+}
+```
+
+`AGY_MODEL` overrides the main and Sonnet slots; the Haiku/Opus/Fable slots
+are pinned to 3.8 here and `AGY_SUBAGENT_MODEL` covers the subagent slot.
 
 ## Translation notes
 
