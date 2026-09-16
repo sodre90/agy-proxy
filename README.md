@@ -9,6 +9,14 @@ The proxy speaks Google's Code Assist `v1internal` protocol on
 credentials that the `agy` CLI stored in the macOS keychain (service `gemini`,
 account `antigravity`). It appears to Google as `antigravity/cli`.
 
+> **Not a Google product.** agy-proxy is a custom, unofficial tool with no
+> affiliation with or endorsement by Google; it exists only to let your own
+> Google AI subscription be used from Claude Code. Driving a personal
+> subscription through an unofficial client is outside Google's ToS for that
+> API: if your account is rate-limited, suspended, or terminated as a
+> consequence, the authors of this tool accept no responsibility whatsoever.
+> Use at your own risk.
+
 ## Build
 
     go build -o agy-proxy .
@@ -148,4 +156,6 @@ are pinned to 3.8 here and `AGY_SUBAGENT_MODEL` covers the subagent slot.
 - The proxy binds to loopback by default; set `-token` if you expose it
   elsewhere. Logs never contain tokens.
 - Using a personal subscription through an unofficial client is outside
-  Google's ToS for that API; the account risk is yours.
+  Google's ToS for that API; the account risk is entirely yours (see the
+  disclaimer at the top of this README — and the MIT `LICENSE`, under which
+  the software is provided AS IS with no warranty of any kind).
