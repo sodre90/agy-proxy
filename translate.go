@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"regexp"
 	"strings"
 )
 
@@ -96,11 +97,17 @@ func (s *signatureStore) put(id, sig string) {
 
 func (s *signatureStore) get(id string) string { return s.byToolUseID[id] }
 
+// Claude Code >= 2.1.273 prepends "x-anthropic-billing-header: cc_version=...;
+// cc_entrypoint=...;" to the system prompt. Upstream 429s on it; every other
+// header of that family is assumed to read the same way.
+var anthropicHeaderPrefix = regexp.MustCompile(`(?i)x-anthropic-[a-z0-9-]+:(\s*[a-z0-9_.-]+=[^;\n]*;)+`)
+
 // sanitizeSystem rewrites Claude Code's identity phrasing to neutral
 // Antigravity terminology so the upstream server doesn't filter it as
 // third-party agent traffic. Only systemInstruction is scanned upstream;
 // user and tool content passes through untouched.
 func sanitizeSystem(s string) string {
+	s = anthropicHeaderPrefix.ReplaceAllString(s, "")
 	s = strings.ReplaceAll(s, "Claude Agent SDK", "Antigravity SDK")
 	s = strings.ReplaceAll(s, "Claude Code", "Antigravity CLI")
 	s = strings.ReplaceAll(s, "Claude agent", "autonomous coding agent")
