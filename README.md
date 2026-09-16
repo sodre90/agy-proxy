@@ -143,10 +143,17 @@ are pinned to 3.8 here and `AGY_SUBAGENT_MODEL` covers the subagent slot.
   replayed with history; without them the model loses its reasoning chain on
   tool round-trips.
 - The upstream server soft-blocks (429) requests whose `systemInstruction`
-  identifies them as Claude Code traffic (it fingerprints the "You are a
-  Claude agent, built on Anthropic's Claude Agent SDK." identity sentence).
-  The proxy rewrites that identity phrasing to neutral Antigravity terms;
-  user messages and tool definitions are not scanned.
+  identifies them as Claude Code traffic: the "You are a Claude agent, built
+  on Anthropic's Claude Agent SDK." identity sentence, and the
+  `x-anthropic-billing-header: cc_version=...; cc_entrypoint=...;` line that
+  Claude Code 2.1.273 prepends to the system prompt. The proxy rewrites the
+  identity phrasing and strips `x-anthropic-*` header lines; user messages
+  and tool definitions are not scanned.
+
+  That block is reported as `429 Resource has been exhausted (e.g. check
+  quota)`, which is not a quota error -- a real one names itself ("Individual
+  quota reached ... Resets in 1h24m47s"). A Claude Code update can introduce
+  a new tell; capture the envelope with `AGY_PROXY_DUMP` and bisect it.
 
 ## Security
 
