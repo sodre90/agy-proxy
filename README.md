@@ -145,7 +145,14 @@ are pinned to 3.8 here and `AGY_SUBAGENT_MODEL` covers the subagent slot.
   keywords are uppercased).
 - Upstream `thoughtSignature` values are remembered per tool-call id and
   replayed with history; without them the model loses its reasoning chain on
-  tool round-trips.
+  tool round-trips. When a request ends on a tool result -- the model being
+  asked to continue from its own call -- upstream rejects the whole request
+  (400 "Function call is missing a thought_signature") unless *every*
+  `functionCall` in the history carries one, and a fabricated signature is
+  refused as corrupted. The store is in-memory, so restarting the proxy
+  mid-session loses those signatures; such exchanges are replayed as plain
+  text (`[called tool X with {...}]`), which upstream accepts. Signatures
+  are portable across models, so switching model mid-session is safe.
 - The upstream server soft-blocks (429) requests whose `systemInstruction`
   identifies them as Claude Code traffic: the "You are a Claude agent, built
   on Anthropic's Claude Agent SDK." identity sentence, and the

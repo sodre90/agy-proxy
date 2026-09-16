@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"regexp"
 	"strings"
 )
@@ -194,10 +195,14 @@ func convertSystem(raw json.RawMessage) *content {
 
 func convertContents(messages []anthMessage, sigs *signatureStore) []content {
 	toolNames := map[string]string{}
+	unsigned := map[string]bool{}
 	for _, msg := range messages {
 		for _, b := range blocksOf(msg) {
 			if b.Type == "tool_use" && b.ID != "" {
 				toolNames[b.ID] = b.Name
+				if sigs.get(b.ID) == "" {
+					unsigned[b.ID] = true
+				}
 			}
 		}
 	}
@@ -210,7 +215,7 @@ func convertContents(messages []anthMessage, sigs *signatureStore) []content {
 		}
 		var parts []contentPart
 		for _, b := range blocksOf(msg) {
-			if part, ok := convertBlock(b, role, toolNames, sigs); ok {
+			if part, ok := convertBlock(b, role, toolNames, sigs, unsigned); ok {
 				parts = append(parts, part)
 			}
 		}
@@ -228,7 +233,28 @@ func convertContents(messages []anthMessage, sigs *signatureStore) []content {
 	return out
 }
 
-func convertBlock(b anthBlock, role string, toolNames map[string]string, sigs *signatureStore) (contentPart, bool) {
+// Upstream rejects the whole request when a functionCall it is asked to
+// continue from carries no thoughtSignature, and a fabricated one is refused
+// as corrupted. Signatures are lost whenever the proxy restarts mid-session,
+// so such exchanges are replayed as plain text, which upstream accepts.
+func transcribeToolUse(b anthBlock) contentPart {
+	args, err := json.Marshal(b.Input)
+	if err != nil {
+		args = []byte("{}")
+	}
+	return contentPart{Text: fmt.Sprintf("[called tool %s with %s]", b.Name, args)}
+}
+
+func transcribeToolResult(b anthBlock, name string) contentPart {
+	result, isError := toolResultPayload(b)
+	label := "result"
+	if isError {
+		label = "error"
+	}
+	return contentPart{Text: fmt.Sprintf("[tool %s %s: %s]", name, label, result)}
+}
+
+func convertBlock(b anthBlock, role string, toolNames map[string]string, sigs *signatureStore, unsigned map[string]bool) (contentPart, bool) {
 	switch b.Type {
 	case "text":
 		if b.Text == "" {
@@ -241,6 +267,9 @@ func convertBlock(b anthBlock, role string, toolNames map[string]string, sigs *s
 		}
 		return contentPart{InlineData: &inlineData{MimeType: b.Source.MediaType, Data: b.Source.Data}}, true
 	case "tool_use":
+		if unsigned[b.ID] {
+			return transcribeToolUse(b), true
+		}
 		args := b.Input
 		if args == nil {
 			args = map[string]any{}
@@ -253,6 +282,9 @@ func convertBlock(b anthBlock, role string, toolNames map[string]string, sigs *s
 		name := toolNames[b.ToolUseID]
 		if name == "" {
 			name = "tool"
+		}
+		if unsigned[b.ToolUseID] {
+			return transcribeToolResult(b, name), true
 		}
 		result, isError := toolResultPayload(b)
 		payload := map[string]any{}
