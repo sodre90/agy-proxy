@@ -155,7 +155,17 @@ func resolveModel(requested, defaultModel string) (string, string) {
 	case strings.HasSuffix(id, "-low"):
 		effort = "LOW"
 	}
+	if alias, ok := unroutableModels[id]; ok {
+		id = alias
+	}
 	return id, effort
+}
+
+// Catalog IDs that GET /v1/models advertises but the generation endpoint
+// rejects with a bare 400, mapped to the ID serving the same model (matched
+// by the catalog's display name). Verified 2026-09-16.
+var unroutableModels = map[string]string{
+	"gemini-3.1-pro-high": "gemini-pro-agent",
 }
 
 func convertSystem(raw json.RawMessage) *content {

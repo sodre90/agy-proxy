@@ -132,6 +132,10 @@ are pinned to 3.8 here and `AGY_SUBAGENT_MODEL` covers the subagent slot.
 - `gemini-3-flash-agent` and `gemini-3.5-flash-*` appear in `GET /v1/models`
   but are decommissioned: they answer any prompt in 0.1s with "Gemini 3.5
   Flash is no longer available." Do not route to them.
+- `gemini-3.1-pro-high` is listed by the catalog but the generation endpoint
+  rejects it with a bare 400 whatever the envelope; `gemini-pro-agent` serves
+  the same model (same catalog display name, "Gemini 3.1 Pro (High)"), so
+  the proxy substitutes it. `gemini-3.1-pro-low` works as listed.
 
 - Anthropic `system` becomes the upstream `systemInstruction`; `assistant`
   becomes the `model` role, and mid-conversation `system` messages are folded
