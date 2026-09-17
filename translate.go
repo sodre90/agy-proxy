@@ -493,6 +493,7 @@ func normalizeJSONSchema(schema map[string]any) map[string]any {
 			out[k] = v
 		}
 	}
+	ensureArrayItems(out, schema)
 	pruneRequired(out)
 	if len(out) == 0 {
 		return map[string]any{}
@@ -502,6 +503,34 @@ func normalizeJSONSchema(schema map[string]any) map[string]any {
 
 // branchReductions flattens allOf/anyOf/oneOf into their first branch so the
 // schema stays expressible in Gemini's proto (which has no combinators).
+// ensureArrayItems satisfies the upstream proto, which fails the request when
+// an ARRAY has no items. A tuple schema (prefixItems, or items as a list) has
+// no single element type, so its first entry stands in; an array whose element
+// type cannot be recovered gets an unconstrained {}, which upstream accepts.
+func ensureArrayItems(out, schema map[string]any) {
+	if t, _ := out["type"].(string); t != "ARRAY" {
+		return
+	}
+	if _, ok := out["items"]; ok {
+		return
+	}
+	for _, tuple := range []any{schema["prefixItems"], schema["items"]} {
+		if first := firstSchemaOf(tuple); first != nil {
+			out["items"] = normalizeJSONSchema(first)
+			return
+		}
+	}
+	out["items"] = map[string]any{}
+}
+
+func firstSchemaOf(v any) map[string]any {
+	list, ok := v.([]any)
+	if !ok || len(list) == 0 {
+		return nil
+	}
+	return anyMap(list[0])
+}
+
 func branchReductions(schema map[string]any) []map[string]any {
 	var branches []map[string]any
 	for _, key := range []string{"allOf", "anyOf", "oneOf"} {

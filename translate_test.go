@@ -72,6 +72,50 @@ func TestNormalizeJSONSchemaPrunesUnsupportedKeys(t *testing.T) {
 	}
 }
 
+// Upstream rejects the whole request when an ARRAY reaches it without items,
+// which tuple schemas (prefixItems, or items as a list) used to do.
+func TestNormalizeJSONSchemaAlwaysGivesArraysItems(t *testing.T) {
+	var schema map[string]any
+	raw := `{
+      "type": "object",
+      "properties": {
+        "where":   {"type": "array", "items": {"type": "array",
+                    "prefixItems": [{"type": "string"}, {"type": "string"}, {}]}},
+        "batch":   {"type": "array", "items": [{"type": "object"}]},
+        "bare":    {"type": "array"},
+        "refless": {"type": "array", "items": {"$ref": "#/$defs/Thing"}},
+        "plain":   {"type": "array", "items": {"type": "string"}}
+      }
+    }`
+	if err := json.Unmarshal([]byte(raw), &schema); err != nil {
+		t.Fatalf("fixture does not parse: %v", err)
+	}
+
+	props := normalizeJSONSchema(schema)["properties"].(map[string]any)
+
+	var check func(node map[string]any, path string)
+	check = func(node map[string]any, path string) {
+		if t2, _ := node["type"].(string); t2 == "ARRAY" {
+			items, ok := node["items"].(map[string]any)
+			if !ok {
+				t.Errorf("%s is an ARRAY without items: %v", path, node)
+				return
+			}
+			check(items, path+".items")
+		}
+	}
+	for name, sub := range props {
+		check(sub.(map[string]any), name)
+	}
+
+	if got, _ := props["plain"].(map[string]any)["items"].(map[string]any)["type"].(string); got != "STRING" {
+		t.Errorf("a normal array should keep its element type, got %q", got)
+	}
+	if got, _ := props["batch"].(map[string]any)["items"].(map[string]any)["type"].(string); got != "OBJECT" {
+		t.Errorf("tuple-form items should adopt the first entry, got %q", got)
+	}
+}
+
 func TestSanitizeSystemStripsAnthropicHeaders(t *testing.T) {
 	in := "x-anthropic-billing-header: cc_version=2.1.273.b98; cc_entrypoint=sdk-cli;You are Claude Code."
 	got := sanitizeSystem(in)

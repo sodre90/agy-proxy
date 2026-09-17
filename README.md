@@ -186,6 +186,11 @@ silent in sessions that do not use it.
   is an allow list, and `allOf`/`anyOf`/`oneOf` branches are run through it
   too -- a raw branch merge is how `const` once leaked through and failed the
   request with `Unknown name "const" ... Cannot find field`.
+- Every `ARRAY` is given an `items`, which the upstream proto requires
+  (`... .items: missing field` otherwise). Tuple schemas (`prefixItems`, or
+  `items` as a list) have no single element type, so the first entry stands
+  in; an array whose element type cannot be recovered gets an unconstrained
+  `{}`, which upstream accepts.
 - Upstream `thoughtSignature` values are remembered per tool-call id and
   replayed with history; without them the model loses its reasoning chain on
   tool round-trips. When a request ends on a tool result -- the model being
