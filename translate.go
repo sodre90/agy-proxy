@@ -186,12 +186,15 @@ func sanitizeSystem(s string) string {
 }
 
 // Gemini writes mathematics as LaTeX by default, which a terminal prints
-// literally as "$$x = \frac{-b \pm ...}$$". Set AGY_PROXY_KEEP_LATEX=1 to turn
-// this off (for a client that renders TeX).
+// literally as "$$x = \frac{-b \pm ...}$$". The system note below asks for
+// Unicode and latexFilter rewrites whatever slips through anyway. Set
+// AGY_PROXY_KEEP_LATEX=1 to turn both off (for a client that renders TeX).
+func keepLatex() bool { return os.Getenv("AGY_PROXY_KEEP_LATEX") != "" }
+
 var plainTextMathNote = mathNoteUnlessDisabled()
 
 func mathNoteUnlessDisabled() string {
-	if os.Getenv("AGY_PROXY_KEEP_LATEX") != "" {
+	if keepLatex() {
 		return ""
 	}
 	return "\n\nYour output is displayed in a plain-text terminal that cannot " +
@@ -627,6 +630,8 @@ func convertToolChoice(raw json.RawMessage) *toolConfig {
 type streamState struct {
 	sigs *signatureStore
 
+	text        *latexFilter
+	think       *latexFilter
 	textIndex   int
 	thinkIndex  int
 	tools       []*openToolBlock
@@ -651,7 +656,11 @@ type usageInfo struct {
 }
 
 func newStreamState(sigs *signatureStore) *streamState {
-	return &streamState{textIndex: -1, thinkIndex: -1, sigs: sigs}
+	st := &streamState{textIndex: -1, thinkIndex: -1, sigs: sigs}
+	if !keepLatex() {
+		st.text, st.think = newLatexFilter(), newLatexFilter()
+	}
+	return st
 }
 
 type streamEvent struct {
@@ -681,11 +690,9 @@ func (st *streamState) feedParts(parts []contentPart) []streamEvent {
 	for _, p := range parts {
 		switch {
 		case p.Text != "" && p.Thought:
-			events = append(events, st.openThinking()...)
-			events = append(events, deltaEvent(st.thinkIndex, map[string]any{"type": "thinking_delta", "thinking": p.Text}))
+			events = append(events, st.emitThinking(st.think.Write(p.Text))...)
 		case p.Text != "":
-			events = append(events, st.openText()...)
-			events = append(events, deltaEvent(st.textIndex, map[string]any{"type": "text_delta", "text": p.Text}))
+			events = append(events, st.emitText(st.text.Write(p.Text))...)
 		case p.FunctionCall != nil:
 			events = append(events, st.feedFunctionCall(p)...)
 			continue
@@ -695,6 +702,22 @@ func (st *streamState) feedParts(parts []contentPart) []streamEvent {
 		}
 	}
 	return events
+}
+
+func (st *streamState) emitText(text string) []streamEvent {
+	if text == "" {
+		return nil
+	}
+	events := st.openText()
+	return append(events, deltaEvent(st.textIndex, map[string]any{"type": "text_delta", "text": text}))
+}
+
+func (st *streamState) emitThinking(text string) []streamEvent {
+	if text == "" {
+		return nil
+	}
+	events := st.openThinking()
+	return append(events, deltaEvent(st.thinkIndex, map[string]any{"type": "thinking_delta", "thinking": text}))
 }
 
 func (st *streamState) openText() []streamEvent {
@@ -761,7 +784,8 @@ func (st *streamState) rememberLastToolSignature(sig string) {
 }
 
 func (st *streamState) closeTextAndThinking() []streamEvent {
-	var events []streamEvent
+	events := st.emitThinking(st.think.Flush())
+	events = append(events, st.emitText(st.text.Flush())...)
 	if st.thinkIndex >= 0 {
 		events = append(events, streamEvent{"content_block_stop", map[string]any{"index": st.thinkIndex}})
 		st.thinkIndex = -1
