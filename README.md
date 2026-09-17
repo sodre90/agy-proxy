@@ -182,7 +182,10 @@ silent in sessions that do not use it.
   into adjacent user turns (Gemini rejects a `system` role in `contents`).
 - Tool definitions are pruned to the subset of JSON Schema the upstream proto
   accepts (`$schema`, `$defs`, `title`, `default`, etc. are dropped; type
-  keywords are uppercased).
+  keywords are uppercased; `const` becomes a single-value `enum`). The pruner
+  is an allow list, and `allOf`/`anyOf`/`oneOf` branches are run through it
+  too -- a raw branch merge is how `const` once leaked through and failed the
+  request with `Unknown name "const" ... Cannot find field`.
 - Upstream `thoughtSignature` values are remembered per tool-call id and
   replayed with history; without them the model loses its reasoning chain on
   tool round-trips. When a request ends on a tool result -- the model being

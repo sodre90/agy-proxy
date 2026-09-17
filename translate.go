@@ -462,7 +462,7 @@ func normalizeJSONSchema(schema map[string]any) map[string]any {
 	}
 	out := make(map[string]any)
 	for _, branch := range branchReductions(schema) {
-		mergeMaps(out, branch)
+		mergeMaps(out, normalizeJSONSchema(branch))
 	}
 	for k, v := range schema {
 		switch k {
