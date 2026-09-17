@@ -195,9 +195,13 @@ func mathNoteUnlessDisabled() string {
 		return ""
 	}
 	return "\n\nYour output is displayed in a plain-text terminal that cannot " +
-		"render LaTeX. Write mathematics as Unicode text — x² + y², √2, π, ≈, " +
-		"∫₀¹, (a + b)/2, ℝ — and never use $…$, $$…$$, \\(…\\), \\[…\\], " +
-		"\\frac, \\sqrt, \\pm or other TeX markup."
+		"render LaTeX or any math markup. Never put a dollar sign around " +
+		"mathematics and never emit a backslash command. Write every variable, " +
+		"formula and expression as plain Unicode text exactly as it should " +
+		"appear on screen: K = 4, top-k = 10, hit_rate = K/E, x² + y², √2, π, " +
+		"≈, ≤, ×, ∫₀¹, (a + b)/2, ℝ. This applies in prose, headings, bullet " +
+		"lists and tables alike. Writing $K$ or \\text{-} or \\frac{a}{b} is " +
+		"always an error."
 }
 
 // buildGenerateRequest converts an Anthropic request into the v1internal
