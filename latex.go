@@ -73,10 +73,10 @@ func (f *latexFilter) scan(final bool) (string, int) {
 	for i < len(f.buf) {
 		if f.inFence {
 			end, complete := lineEnd(f.buf, i)
-			if !complete && !final {
+			if !complete && !final && f.atLineStart && couldCloseFence(f.buf[i:]) {
 				return out.String(), i
 			}
-			if closesFence(f.buf[i:end], f.fenceLen) {
+			if f.atLineStart && closesFence(f.buf[i:end], f.fenceLen) {
 				f.inFence = false
 			}
 			emit(f.buf[i:end])
@@ -502,6 +502,14 @@ func lineEnd(s string, i int) (int, bool) {
 func closesFence(line string, fenceLen int) bool {
 	trimmed := strings.TrimSpace(line)
 	return len(trimmed) >= fenceLen && strings.Trim(trimmed, "`") == ""
+}
+
+// couldCloseFence reports whether a line this far in might still turn out to be
+// a closing fence. Only those lines are worth holding — the rest of a code
+// block is emitted as it arrives, so a long code block is not painted a line at
+// a time.
+func couldCloseFence(partialLine string) bool {
+	return strings.Trim(strings.TrimLeft(partialLine, " \t"), "`") == ""
 }
 
 func isLetter(c byte) bool { return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' }

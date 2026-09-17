@@ -74,6 +74,7 @@ func TestLatexFilterIsIndependentOfChunkBoundaries(t *testing.T) {
 		"export $PWD/bin:$PATH while $K = 4$ holds",
 		"```\n$K = 4$ inside a fence\n```\nand ``$K$`` inline, then $K$ live",
 		"````md\n```\n$K = 4$\n```\n````\ndone $K$",
+		"```\nx = ```\nstill inside\n```\n$K$",
 		"$$display\nover\nlines$$ and \\(inline\\)",
 	}
 	for _, in := range inputs {
@@ -114,6 +115,21 @@ func TestLatexFilterHoldsNothingWithoutTriggers(t *testing.T) {
 	}
 	if held := f.Flush(); held != "" {
 		t.Errorf("filter held %q of trigger-free text", held)
+	}
+}
+
+// A code block must stream out as it arrives rather than a line at a time,
+// which is what holding every partial line for a possible closing fence would
+// do — most of this proxy's output is code.
+func TestLatexFilterDoesNotDelayCodeBlocks(t *testing.T) {
+	f := newLatexFilter()
+	for _, chunk := range []string{"```py\n", "x = f(", "y, z)\n", "print(x)\n", "```\n"} {
+		if got := f.Write(chunk); got != chunk {
+			t.Errorf("Write(%q) = %q, want it returned whole", chunk, got)
+		}
+	}
+	if held := f.Flush(); held != "" {
+		t.Errorf("filter held %q at the end of a code block", held)
 	}
 }
 

@@ -197,7 +197,7 @@ func (s *proxyServer) handleNonStreaming(w http.ResponseWriter, r *http.Request,
 		writeAnthropicError(w, status, code, err.Error())
 		return
 	}
-	state.closeAll()
+	events = append(events, state.closeAll()...)
 	message := assembleMessage(model, state, events)
 	if content, _ := message["content"].([]any); len(content) == 0 {
 		s.logger.debugf("upstream returned an empty candidate (non-stream); emitting placeholder")
