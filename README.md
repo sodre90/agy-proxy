@@ -25,9 +25,15 @@ account `antigravity`). It appears to Google as `antigravity/cli`.
 
     ./agy-proxy -verbose
 
-On first start it copies the keychain refresh token to
+On first start it copies the refresh token the `agy` CLI stored to
 `~/.config/agy-proxy/creds.json` (mode 0600) and refreshes access tokens from
 there. Make sure you are logged in (`agy` works) beforehand.
+
+Every successful refresh is written back -- including a rotated refresh token --
+and a `creds.json` replaced while the process runs is picked up within 30
+seconds, so re-authenticating does not need a restart. If the file's token is
+rejected, the CLI's own store is consulted, and again every 30 seconds while
+failures continue, so an `agy` re-login recovers a running proxy.
 
 Flags (env fallbacks in parentheses):
 
@@ -53,10 +59,12 @@ archive contains `agy-proxy` plus this README:
     tar xzf agy-proxy-v0.1.0-darwin-arm64.tar.gz
     ./agy-proxy-v0.1.0-darwin-arm64/agy-proxy -check
 
-On Linux there is no macOS keychain to copy the refresh token from, so place
-a `~/.config/agy-proxy/creds.json` yourself before the first start (copy it
-from a Mac where `agy` is logged in, or write the `refresh_token` field by
-hand).
+On Linux the refresh token is read from the same Secret Service entry `agy`
+writes (via `secret-tool`) or from its file fallback
+`~/.gemini/antigravity-cli/antigravity-oauth-token`, whichever is fresher. Run
+`agy` once on the machine to log in; if neither store exists, place a
+`~/.config/agy-proxy/creds.json` yourself before the first start (copy it from a
+Mac where `agy` is logged in, or write the `refresh_token` field by hand).
 
 ## Use from Claude Code
 
@@ -225,9 +233,11 @@ silent in sessions that do not use it.
 
 ## Security
 
-- Credentials live in `~/.config/agy-proxy/creds.json` (0600); the process
-  reads the keychain entry once via `/usr/bin/security` (macOS may prompt for
-  keychain access).
+- Credentials live in `~/.config/agy-proxy/creds.json` (0600); the CLI's store
+  is read only when that file is missing, or after a refresh is rejected (then
+  at most once every 30 s while failures continue):
+  `/usr/bin/security` (macOS, which may prompt for keychain access),
+  `secret-tool` (Linux), or the CLI's token file under `~/.gemini`.
 - `~/.config/agy-proxy/signatures.jsonl` (0600) holds upstream reasoning
   signatures for past tool calls -- opaque model state, not credentials, but
   delete it if you want no trace of a session.

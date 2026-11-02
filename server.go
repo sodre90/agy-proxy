@@ -118,6 +118,14 @@ func (s *proxyServer) handleMessages(w http.ResponseWriter, r *http.Request) {
 		writeAnthropicError(w, http.StatusInternalServerError, "api_error", "streaming unsupported by this server")
 		return
 	}
+	// Resolve the credential before committing to a 200: once SSE headers are
+	// written the status cannot be corrected, and a dead token would otherwise
+	// look like a successful request in the access log.
+	if _, err := s.agy.tokens.Token(); err != nil {
+		status, code := httpStatusForError(err)
+		writeAnthropicError(w, status, code, err.Error())
+		return
+	}
 	w.Header().Set("content-type", "text/event-stream")
 	w.Header().Set("cache-control", "no-cache")
 	w.WriteHeader(http.StatusOK)
@@ -157,7 +165,7 @@ func (s *proxyServer) handleMessages(w http.ResponseWriter, r *http.Request) {
 			s.logger.debugf("client abandoned stream: %v", streamErr)
 			return
 		}
-		s.logger.debugf("stream aborted: %v", streamErr)
+		s.logger.log.Printf("stream request failed: %v", streamErr)
 		enc.emit("error", map[string]any{"type": "error", "error": map[string]any{
 			"type":    anthropicErrorType(streamErr),
 			"message": streamErr.Error(),
